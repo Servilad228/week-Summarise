@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  summarizer:
+    build: .
+    container_name: telegram-summarizer
+    # Automatically restarts unless stopped manually, handles reboots
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    # Enable standard input and terminal allocation to support interactive login
+    stdin_open: true
+    tty: true
