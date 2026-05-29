@@ -103,10 +103,11 @@ except ValueError:
 STATE_FILE_PATH = os.environ.get("STATE_FILE_PATH", "data/state.json").strip()
 
 
-def validate_config(is_login_only: bool = False):
+def validate_config(is_login_only: bool = False, is_test_only: bool = False):
     """
     Validates that necessary configuration is set.
     If is_login_only is True, does not check chat IDs and LLM keys.
+    If is_test_only is True, does not check TELEGRAM_CHAT_ID (as tests run using Saved Messages).
     """
     errors = []
     if not TELEGRAM_API_ID:
@@ -115,7 +116,7 @@ def validate_config(is_login_only: bool = False):
         errors.append("TELEGRAM_API_HASH is required.")
         
     if not is_login_only:
-        if not TELEGRAM_CHAT_ID:
+        if not is_test_only and not TELEGRAM_CHAT_ID:
             errors.append("TELEGRAM_CHAT_ID is required to identify which chat to summarize.")
         if not OPENROUTER_API_KEY:
             errors.append("OPENROUTER_API_KEY is required to generate summaries.")
