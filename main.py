@@ -17,6 +17,32 @@ logging.basicConfig(
 )
 logger = logging.getLogger("summarizer.main")
 
+def is_test_service_message(text: str) -> bool:
+    if not text:
+        return False
+    indicators = [
+        "Результат Теста Саммаризатора",
+        "Какой стиль саммари использовать на этой неделе",
+        "Выбран стиль:",
+        "Начинаю генерацию саммари",
+        "Время выбора стиля истекло",
+        "Стиль выбран:",
+        "Тестовый отчет (Саммари)"
+    ]
+    for ind in indicators:
+        if ind in text:
+            return True
+            
+    # Also ignore button reply texts
+    button_texts = [
+        "1. бро-стиль 😎",
+        "2. факты 📊",
+        "3. рапорт 🪖"
+    ]
+    if text.strip().lower() in button_texts:
+        return True
+    return False
+
 async def run_tests(client) -> bool:
     logger.info("Starting diagnostic tests...")
     
@@ -33,15 +59,16 @@ async def run_tests(client) -> bool:
         logger.error(f" -> FAILED: Telegram authorization failed: {e}")
         return False
         
-    # Test 2: Fetch messages from Saved Messages
+    # Test 2: Fetch messages from Saved Messages (filtering out previous test messages)
     logger.info("Test 2/4: Fetching 10-20 text messages from Saved Messages ('me')...")
     messages = []
     try:
-        async for message in client.iter_messages('me', limit=100):
+        async for message in client.iter_messages('me', limit=200):
             if len(messages) >= 20:
                 break
             if message.text and not message.action:
-                messages.append(message)
+                if not is_test_service_message(message.text):
+                    messages.append(message)
         logger.info(f" -> SUCCESS: Fetched {len(messages)} text messages from Saved Messages")
     except Exception as e:
         logger.error(f" -> FAILED: Could not fetch messages from Saved Messages: {e}")
@@ -65,11 +92,12 @@ async def run_tests(client) -> bool:
         ]
         formatted_lines.extend(dummy_data)
         
-    # Test 3: OpenRouter API Connectivity with real summary
-    logger.info("Test 3/4: Sending messages to OpenRouter for a test summary...")
+    # Test 3: Prompt for style and test OpenRouter API
+    logger.info("Test 3/4: Prompting for summary style and requesting OpenRouter summary...")
     chat_history_text = "\n".join(formatted_lines)
     try:
-        summary = await summary_generator.generate_summary(chat_history_text)
+        style_code = await telegram_client.request_summary_style(client)
+        summary = await summary_generator.generate_summary(chat_history_text, style_code)
         if "Ошибка" in summary:
             logger.error(f" -> FAILED: OpenRouter API error: {summary}")
             return False

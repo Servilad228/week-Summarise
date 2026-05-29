@@ -94,9 +94,10 @@ async def run_now(client, days_history: int = 7):
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     start_date = now_utc - datetime.timedelta(days=days_history)
     
-    # Fetch, summarize, send
+    # Fetch, prompt for style, summarize, send
     history_text = await telegram_client.fetch_chat_history(client, start_date)
-    summary = await summary_generator.generate_summary(history_text)
+    style_code = await telegram_client.request_summary_style(client)
+    summary = await summary_generator.generate_summary(history_text, style_code)
     await telegram_client.send_summary(client, summary)
     
     # Update last run state
@@ -181,7 +182,8 @@ async def start_scheduler_loop(client):
             if should_run:
                 logger.info("Executing summary job...")
                 history_text = await telegram_client.fetch_chat_history(client, start_date)
-                summary = await summary_generator.generate_summary(history_text)
+                style_code = await telegram_client.request_summary_style(client)
+                summary = await summary_generator.generate_summary(history_text, style_code)
                 await telegram_client.send_summary(client, summary)
                 
                 # Save execution timestamp

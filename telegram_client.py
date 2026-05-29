@@ -1,6 +1,7 @@
 import datetime
 import logging
-from telethon import TelegramClient
+import asyncio
+from telethon import TelegramClient, Button
 from telethon.tl.types import PeerUser, PeerChat, PeerChannel
 import config
 
@@ -163,3 +164,83 @@ async def send_summary(client: TelegramClient, summary_text: str):
             logger.info(f"Successfully sent summary to target: {target}")
         except Exception as e:
             logger.error(f"Failed to send summary to target '{target}': {e}")
+
+async def request_summary_style(client: TelegramClient, timeout_seconds: int = 7200) -> str:
+    """
+    Sends a style selection prompt with reply keyboard buttons to Saved Messages ('me').
+    Asynchronously waits for the user to respond by clicking a button or sending a message.
+    Clears the keyboard after selection and returns the choice ("1", "2", "3").
+    Defaults to "2" (Neutral) on timeout.
+    """
+    logger.info("Prompting user for summary style in Saved Messages...")
+    
+    prompt_text = (
+        "❓ **Какой стиль саммари использовать на этой неделе?**\n\n"
+        "1️⃣ **Дружеский бро-стиль** 😎 (с юмором, сленгом, мемами)\n"
+        "2️⃣ **Нейтральная выжимка фактов** 📊 (хронологично, строго по делу)\n"
+        "3️⃣ **Армейский рапорт** 🪖 (шуточный строгий армейский отчет)"
+    )
+    
+    buttons = [
+        [
+            Button.text("1. Бро-стиль 😎", resize=True, single_use=True),
+            Button.text("2. Факты 📊", resize=True, single_use=True),
+            Button.text("3. Рапорт 🪖", resize=True, single_use=True)
+        ]
+    ]
+    
+    try:
+        prompt_msg = await client.send_message('me', prompt_text, buttons=buttons)
+    except Exception as e:
+        logger.error(f"Failed to send style prompt to Saved Messages: {e}")
+        return "2"
+        
+    start_time = datetime.datetime.now()
+    last_checked_id = prompt_msg.id
+    chosen_style = None
+    
+    while True:
+        elapsed = (datetime.datetime.now() - start_time).total_seconds()
+        if elapsed > timeout_seconds:
+            logger.warning(f"Style selection timed out after {timeout_seconds}s. Defaulting to Neutral facts.")
+            try:
+                await client.send_message('me', "⏰ Время выбора стиля истекло. Выбран нейтральный стиль по умолчанию.", buttons=Button.clear())
+            except Exception:
+                pass
+            return "2"
+            
+        try:
+            # Check for new messages since prompt_msg.id
+            async for msg in client.iter_messages('me', min_id=last_checked_id, limit=10):
+                text = msg.text.strip().lower() if msg.text else ""
+                
+                if text in ['1', '2', '3']:
+                    chosen_style = text
+                elif '1. бро-стиль' in text or 'бро-стиль' in text or 'бро' in text or 'bro' in text:
+                    chosen_style = "1"
+                elif '2. факты' in text or 'факты' in text or 'нейтрал' in text:
+                    chosen_style = "2"
+                elif '3. рапорт' in text or 'рапорт' in text or 'армей' in text:
+                    chosen_style = "3"
+                    
+                if chosen_style:
+                    style_names = {
+                        "1": "Дружеский бро-стиль 😎",
+                        "2": "Нейтральная выжимка фактов 📊",
+                        "3": "Армейский рапорт 🪖"
+                    }
+                    logger.info(f"User selected style: {style_names[chosen_style]}")
+                    try:
+                        await client.send_message(
+                            'me', 
+                            f"✅ Выбран стиль: **{style_names[chosen_style]}**.\nНачинаю генерацию саммари...", 
+                            buttons=Button.clear()
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to clear buttons: {e}")
+                    return chosen_style
+                    
+        except Exception as e:
+            logger.error(f"Error while polling style response: {e}")
+            
+        await asyncio.sleep(3)
